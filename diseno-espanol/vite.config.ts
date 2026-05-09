@@ -11,6 +11,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      "@workspace/api-client-react": path.resolve(import.meta.dirname, "../api-client-react/src"),
+      "@workspace/object-storage-web": path.resolve(import.meta.dirname, "../object-storage-web/src"),
     },
     dedupe: ["react", "react-dom"],
   },
