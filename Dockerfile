@@ -4,4 +4,5 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm --filter api-server build
-CMD ["node", "api-server/dist/index.mjs"]
+WORKDIR /app/api-server
+CMD ["node", "dist/index.mjs"]
