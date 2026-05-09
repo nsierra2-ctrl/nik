@@ -1,6 +1,14 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "corepack enable && corepack prepare pnpm@latest --activate && pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
+nixpacksPlan = ""
+
+[build.nixpacksPlanConfig]
+providers = ["node"]
+buildCommand = "pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
 
 [deploy]
 startCommand = "node api-server/dist/index.mjs"
+
+[nixpacks]
+aptPkgs = []
+nixPkgs = ["nodejs_20", "nodePackages.pnpm"
