@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
+buildCommand = "npm install -g pnpm && export PATH=$PATH:$(npm root -g)/../bin && pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
 
 [deploy]
-startCommand = "pnpm --filter api-server start"
+startCommand = "node api-server/dist/index.mjs"
