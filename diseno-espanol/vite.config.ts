@@ -16,9 +16,21 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom"],
   },
+  optimizeDeps: {
+    include: [
+      "@uppy/core",
+      "@uppy/dashboard",
+      "@uppy/react",
+      "@uppy/aws-s3",
+      "@tanstack/react-query",
+    ],
+  },
   root: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
+    commonjsOptions: {
+      include: [/node_modules/],
+    },
   },
 });
