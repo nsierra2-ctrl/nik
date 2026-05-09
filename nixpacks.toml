@@ -8,4 +8,4 @@ cmds = ["pnpm install --no-frozen-lockfile"]
 cmds = ["pnpm --filter api-server build"]
 
 [start]
-cmd = "node api-server/dist/index.mjs"
+cmd = "node /app/api-server/dist/index.mjs"
