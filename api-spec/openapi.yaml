@@ -1,0 +1,718 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: VAPINGSTREET wholesale catalog API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: catalog
+    description: Public catalog (products and categories)
+  - name: admin
+    description: Admin authentication and product management
+  - name: storage
+    description: Object storage uploads
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [catalog]
+      summary: List categories
+      responses:
+        "200":
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [catalog]
+      summary: List active products
+      parameters:
+        - in: query
+          name: category
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Products list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [catalog]
+      summary: Get a single product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [admin]
+      summary: Admin login with password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginInput"
+      responses:
+        "200":
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+        "401":
+          description: Invalid password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/logout:
+    post:
+      operationId: adminLogout
+      tags: [admin]
+      summary: Admin logout
+      responses:
+        "204":
+          description: Logged out
+
+  /admin/me:
+    get:
+      operationId: getAdminMe
+      tags: [admin]
+      summary: Check admin session status
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+
+  /admin/products:
+    get:
+      operationId: adminListProducts
+      tags: [admin]
+      summary: List all products including inactive
+      responses:
+        "200":
+          description: All products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: adminCreateProduct
+      tags: [admin]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/products/{id}:
+    patch:
+      operationId: adminUpdateProduct
+      tags: [admin]
+      summary: Update a product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeleteProduct
+      tags: [admin]
+      summary: Delete a product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/products/reorder:
+    post:
+      operationId: adminReorderProducts
+      tags: [admin]
+      summary: Update sort order in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderProductsBody"
+      responses:
+        "204":
+          description: Reordered
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/categories:
+    post:
+      operationId: adminCreateCategory
+      tags: [admin]
+      summary: Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/categories/{slug}:
+    patch:
+      operationId: adminUpdateCategory
+      tags: [admin]
+      summary: Update a category
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: adminDeleteCategory
+      tags: [admin]
+      summary: Delete a category
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/site-settings:
+    get:
+      operationId: getSiteSettings
+      tags: [admin]
+      summary: Get site-wide settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSettings"
+    patch:
+      operationId: adminUpdateSiteSettings
+      tags: [admin]
+      summary: Update site-wide settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteSettingsBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteSettings"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlInput"
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    PriceTier:
+      type: object
+      properties:
+        label:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: integer
+          description: COP per unit
+        totalPrice:
+          type: integer
+          description: COP total
+      required: [label, quantity, unitPrice, totalPrice]
+
+    ProductVariant:
+      type: object
+      properties:
+        name:
+          type: string
+        retailPrice:
+          type: ["integer", "null"]
+        retailLabel:
+          type: ["string", "null"]
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceTier"
+      required: [name, tiers]
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        shortDescription:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+        badge:
+          type: ["string", "null"]
+        imagePath:
+          type: ["string", "null"]
+          description: Object storage path like /objects/uploads/abc
+        retailPrice:
+          type: ["integer", "null"]
+        retailLabel:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        thcPercent:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        sortOrder:
+          type: integer
+        active:
+          type: boolean
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariant"
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceTier"
+      required:
+        - id
+        - slug
+        - name
+        - category
+        - sortOrder
+        - active
+        - variants
+        - tiers
+
+    CreateProductBody:
+      type: object
+      properties:
+        slug:
+          type: ["string", "null"]
+        name:
+          type: string
+        shortDescription:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+        badge:
+          type: ["string", "null"]
+        imagePath:
+          type: ["string", "null"]
+        retailPrice:
+          type: ["integer", "null"]
+        retailLabel:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        thcPercent:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        sortOrder:
+          type: ["integer", "null"]
+        active:
+          type: ["boolean", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariant"
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceTier"
+      required: [name, category]
+
+    UpdateProductBody:
+      type: object
+      properties:
+        slug:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        shortDescription:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        badge:
+          type: ["string", "null"]
+        imagePath:
+          type: ["string", "null"]
+        retailPrice:
+          type: ["integer", "null"]
+        retailLabel:
+          type: ["string", "null"]
+        unit:
+          type: ["string", "null"]
+        thcPercent:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        sortOrder:
+          type: ["integer", "null"]
+        active:
+          type: ["boolean", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductVariant"
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceTier"
+
+    ReorderEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        sortOrder:
+          type: integer
+      required: [id, sortOrder]
+
+    ReorderProductsBody:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReorderEntry"
+      required: [items]
+
+    Category:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        sortOrder:
+          type: integer
+      required: [slug, name, sortOrder]
+
+    CreateCategoryBody:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        sortOrder:
+          type: ["integer", "null"]
+      required: [slug, name]
+
+    UpdateCategoryBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        sortOrder:
+          type: ["integer", "null"]
+
+    AdminLoginInput:
+      type: object
+      properties:
+        password:
+          type: string
+      required: [password]
+
+    AdminSession:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+      required: [authenticated]
+
+    SiteSettings:
+      type: object
+      properties:
+        siteName:
+          type: string
+        tagline:
+          type: ["string", "null"]
+        heroTitle:
+          type: ["string", "null"]
+        heroSubtitle:
+          type: ["string", "null"]
+        whatsapp:
+          type: ["string", "null"]
+        instagram:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        announcement:
+          type: ["string", "null"]
+      required: [siteName]
+
+    UpdateSiteSettingsBody:
+      type: object
+      properties:
+        siteName:
+          type: ["string", "null"]
+        tagline:
+          type: ["string", "null"]
+        heroTitle:
+          type: ["string", "null"]
+        heroSubtitle:
+          type: ["string", "null"]
+        whatsapp:
+          type: ["string", "null"]
+        instagram:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        announcement:
+          type: ["string", "null"]
+
+    UploadUrlInput:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required: [name, size, contentType]
+
+    UploadUrlResult:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+      required: [uploadURL, objectPath]
