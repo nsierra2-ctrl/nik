@@ -4,3 +4,6 @@ buildCommand = "pnpm install --no-frozen-lockfile && pnpm --filter api-server bu
 
 [deploy]
 startCommand = "pnpm --filter api-server start"
+
+[nixpacks]
+pkgs = ["nodejs", "pnpm"]
