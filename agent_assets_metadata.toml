@@ -1,0 +1,38 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "8yl3bOe2xs72lnu-ifQEB"
+uri = "file://artifacts/diseno-espanol/public/images/hero.png"
+type = "image"
+title = "Andalusian rooftops"
+
+[[generated]]
+id = "5e_y3Iac9aTfQJC0CK9nl"
+uri = "file://artifacts/diseno-espanol/public/images/gaudi.png"
+type = "image"
+title = "Gaudi architecture"
+
+[[generated]]
+id = "0hJ2G3KtdwBbK2kKVV_vq"
+uri = "file://artifacts/diseno-espanol/public/images/alhambra.png"
+type = "image"
+title = "Alhambra tile patterns"
+
+[[generated]]
+id = "75J39CIUaO-uC3fPR6lgR"
+uri = "file://artifacts/diseno-espanol/public/images/poster.png"
+type = "image"
+title = "Mid-century Spanish poster"
+
+[[generated]]
+id = "o2fovQOQ0yXk51EHlb85c"
+uri = "file://artifacts/diseno-espanol/public/images/ceramics.png"
+type = "image"
+title = "Spanish ceramics"
+
+[[generated]]
+id = "cEosAmK4VAI_NHNxYDSq2"
+uri = "file://artifacts/diseno-espanol/public/images/textiles.png"
+type = "image"
+title = "Spanish leather textiles"
