@@ -14,21 +14,20 @@ export default defineConfig({
       "@workspace/api-client-react": path.resolve(import.meta.dirname, "../api-client-react/src"),
       "@workspace/object-storage-web": path.resolve(import.meta.dirname, "../object-storage-web/src"),
     },
-    dedupe: ["react", "react-dom"],
-    modules: [
-      path.resolve(import.meta.dirname, "node_modules"),
-      "node_modules",
-    ],
+    dedupe: ["react", "react-dom", "@uppy/core", "@tanstack/react-query"],
   },
   root: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
     rollupOptions: {
-      onwarn(warning, warn) {
-        if (warning.code === "UNRESOLVED_IMPORT") return;
-        warn(warning);
-      },
+      external: [],
+      plugins: [],
+    },
+  },
+  server: {
+    fs: {
+      allow: [".."],
     },
   },
 });
