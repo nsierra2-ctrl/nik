@@ -1,9 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
+buildCommand = "npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm --filter api-server build"
 
 [deploy]
 startCommand = "pnpm --filter api-server start"
-
-[nixpacks]
-pkgs = ["nodejs", "pnpm"]
