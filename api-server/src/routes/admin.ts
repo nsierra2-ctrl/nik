@@ -6,7 +6,6 @@ import { AdminLoginBody as AdminLoginInput } from "@workspace/api-zod";
 import { ADMIN_COOKIE, isAdminAuthenticated } from "../middlewares/admin";
 
 const router: IRouter = Router();
-
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
 function constantTimeEqual(a: string, b: string): boolean {
@@ -22,38 +21,29 @@ router.post("/admin/login", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid request" });
     return;
   }
-
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) {
     req.log.error("ADMIN_PASSWORD env var is not set");
     res.status(500).json({ error: "Server misconfigured" });
     return;
   }
-
   if (!constantTimeEqual(parsed.data.password, expected)) {
     res.status(401).json({ error: "Contraseña incorrecta" });
     return;
   }
-
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-
   await db.insert(adminSessionsTable).values({ token, expiresAt });
-
-  // Best-effort cleanup of expired sessions
   await db
     .delete(adminSessionsTable)
     .where(lt(adminSessionsTable.expiresAt, new Date()));
-
-  const isProd = process.env.NODE_ENV === "production";
   res.cookie(ADMIN_COOKIE, token, {
     httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
+    secure: true,
+    sameSite: "none",
     maxAge: SESSION_TTL_MS,
     path: "/",
   });
-
   res.json({ authenticated: true });
 });
 
