@@ -6,7 +6,7 @@ import { AdminLoginBody as AdminLoginInput } from "@workspace/api-zod";
 import { ADMIN_COOKIE, isAdminAuthenticated } from "../middlewares/admin";
 
 const router: IRouter = Router();
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 function constantTimeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -34,13 +34,12 @@ router.post("/admin/login", async (req, res): Promise<void> => {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await db.insert(adminSessionsTable).values({ token, expiresAt });
-  await db
-    .delete(adminSessionsTable)
-    .where(lt(adminSessionsTable.expiresAt, new Date()));
+  await db.delete(adminSessionsTable).where(lt(adminSessionsTable.expiresAt, new Date()));
   res.cookie(ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "none",
+    domain: ".vapingstreet.com",
     maxAge: SESSION_TTL_MS,
     path: "/",
   });
