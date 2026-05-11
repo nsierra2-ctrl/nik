@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30_000,
+      staleTime: 30000,
     },
   },
 });
@@ -35,17 +35,23 @@ function Router() {
 }
 
 function App() {
+  const base =
+    typeof import.meta.env.BASE_URL === "string"
+      ? import.meta.env.BASE_URL.replace(/\/$/, "")
+      : "";
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <CartProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <WouterRouter base={base}>
             <AgeGate>
               <Router />
               <CartDrawer />
               <CartFab />
             </AgeGate>
           </WouterRouter>
+
           <Toaster />
         </CartProvider>
       </TooltipProvider>
