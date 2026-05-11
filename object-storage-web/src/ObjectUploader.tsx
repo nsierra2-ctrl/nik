@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Uppy from "@uppy/core";
 import type { UppyFile, UploadResult } from "@uppy/core";
-import { DashboardModal } from "@uppy/react";
-import "@uppy/core/dist/style.min.css";
-import "@uppy/dashboard/dist/style.min.css";
+import DashboardModal from "@uppy/react/dashboard-modal";
+import "@uppy/core/css/style.min.css";
+import "@uppy/dashboard/css/style.min.css";
 import AwsS3 from "@uppy/aws-s3";
 
 interface ObjectUploaderProps {
@@ -46,6 +46,7 @@ export function ObjectUploader({
       autoProceed: false,
     })
       .use(AwsS3, {
+        shouldUseMultipart: false,
         getUploadParameters: (file) => onGetUploadParametersRef.current(file),
       })
       .on("complete", (result) => {
@@ -65,5 +66,7 @@ export function ObjectUploader({
         proudlyDisplayPoweredByUppy={false}
       />
     </div>
+  );
+}
   );
 }
