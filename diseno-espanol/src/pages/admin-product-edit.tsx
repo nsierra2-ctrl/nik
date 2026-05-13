@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import {
   useAdminListProducts,
@@ -107,7 +107,6 @@ export default function AdminProductEdit() {
     );
   }
 
-  // Pass products list down so ProductEditor can use it for ImageGalleryPicker
   return <ProductEditor product={product} allProducts={products ?? []} />;
 }
 
@@ -130,11 +129,12 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
     setDraft((d) => ({ ...d, [key]: value }));
   };
 
-  const invalidate = () => {
+  // FIX: useCallback para que invalidate no sea nueva referencia en cada render
+  const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: getAdminListProductsQueryKey() });
     qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetProductQueryKey(product.id) });
-  };
+  }, [qc, product.id]);
 
   const handleSave = async () => {
     setError(null);
@@ -169,9 +169,12 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
     }
   };
 
-  const persistImage = async (newPath: string) => {
+  // FIX: useCallback para que persistImage no sea nueva referencia en cada render.
+  // Esto evita que ObjectUploader (Uppy) detecte un prop nuevo y se desmonte/remonte
+  // en bucle cada vez que update.isPending cambia.
+  const persistImage = useCallback(async (newPath: string) => {
     try {
-      setField("imagePath", newPath);
+      setDraft((d) => ({ ...d, imagePath: newPath }));
       await update.mutateAsync({
         id: product.id,
         data: { imagePath: newPath },
@@ -183,14 +186,36 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
       const msg = e instanceof Error ? e.message : "Error al guardar imagen";
       setError(msg);
     }
-  };
+  }, [product.id, update, invalidate]);
 
-  const handleImageUpload = async (uploadedUrl: string) => {
+  // FIX: useCallback para que handleImageUpload sea referencia estable
+  const handleImageUpload = useCallback(async (uploadedUrl: string) => {
     const u = new URL(uploadedUrl);
     const objectPath = u.pathname.split("/").slice(-1)[0];
     const newPath = `/objects/uploads/${objectPath}`;
     await persistImage(newPath);
-  };
+  }, [persistImage]);
+
+  // FIX: useCallback para los dos callbacks que se pasan a ObjectUploader.
+  // Si son funciones inline (nuevas en cada render), Uppy las trata como
+  // props distintas → desmonta y remonta el plugin → bucle de crash.
+  const handleGetUploadParameters = useCallback(async (file: File) => {
+    const res = await requestUpload.mutateAsync({
+      data: {
+        name: String(file.name ?? "image"),
+        size: Number(file.size ?? 0),
+        contentType: String(file.type ?? "application/octet-stream"),
+      },
+    });
+    return { method: "PUT" as const, url: res.uploadURL };
+  }, [requestUpload]);
+
+  const handleUploadComplete = useCallback((result: { successful?: Array<{ uploadURL?: string }> }) => {
+    const successful = result.successful?.[0];
+    if (successful?.uploadURL) {
+      void handleImageUpload(successful.uploadURL);
+    }
+  }, [handleImageUpload]);
 
   const addTier = () => {
     setField("tiers", [
@@ -359,26 +384,12 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                 )}
               </div>
 
-              {/* Upload button */}
+              {/* Upload button — FIX: callbacks memoizados, no inline */}
               <ObjectUploader
                 maxNumberOfFiles={1}
                 maxFileSize={20 * 1024 * 1024}
-                onGetUploadParameters={async (file) => {
-                  const res = await requestUpload.mutateAsync({
-                    data: {
-                      name: String(file.name ?? "image"),
-                      size: Number(file.size ?? 0),
-                      contentType: String(file.type ?? "application/octet-stream"),
-                    },
-                  });
-                  return { method: "PUT", url: res.uploadURL };
-                }}
-                onComplete={(result) => {
-                  const successful = result.successful?.[0];
-                  if (successful?.uploadURL) {
-                    void handleImageUpload(successful.uploadURL);
-                  }
-                }}
+                onGetUploadParameters={handleGetUploadParameters}
+                onComplete={handleUploadComplete}
                 buttonClassName="btn-neon"
               >
                 {draft.imagePath ? "↑ Cambiar imagen" : "↑ Subir imagen"}
@@ -396,12 +407,11 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                 </button>
               )}
 
-              {/* Gallery picker — uses allProducts from parent */}
               <ImageGalleryPicker
                 products={allProducts}
                 currentId={product.id}
                 currentPath={draft.imagePath}
-                onPick={(path) => void persistImage(path)}
+                onPick={persistImage}
               />
             </div>
 
@@ -621,7 +631,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                   </div>
                 ) : (
                   <>
-                    {/* Header row */}
                     <div
                       className="hidden sm:grid gap-2 mb-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] px-1"
                       style={{ gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr auto", color: "var(--color-muted-2)" }}
@@ -961,3 +970,4 @@ function ImageGalleryPicker({
     </div>
   );
 }
+  
