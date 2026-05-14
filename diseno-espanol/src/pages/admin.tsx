@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, Link } from "wouter";
 import {
   useAdminListProducts,
@@ -76,7 +76,8 @@ function Dashboard() {
       },
     });
     invalidate();
-    setLocation(`/admin/products/${res.id}`);
+    // FIX: defer navigation so React finishes cleanup before mounting new route
+    window.setTimeout(() => setLocation(`/admin/products/${res.id}`), 0);
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -245,9 +246,17 @@ function SiteSettingsCard() {
   const update = useAdminUpdateSiteSettings();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
+  // FIX: track mounted state to prevent setState after unmount
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
-    if (data) {
+    if (data && mountedRef.current) {
       setDraft({
         siteName: data.siteName ?? "",
         tagline: data.tagline ?? "",
@@ -266,6 +275,7 @@ function SiteSettingsCard() {
   }
 
   const handleSave = async () => {
+    if (!mountedRef.current) return;
     setSaved(false);
     await update.mutateAsync({
       data: Object.fromEntries(
@@ -273,8 +283,13 @@ function SiteSettingsCard() {
       ),
     });
     qc.invalidateQueries({ queryKey: getGetSiteSettingsQueryKey() });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2000);
+    // FIX: only update state if still mounted
+    if (mountedRef.current) {
+      setSaved(true);
+      window.setTimeout(() => {
+        if (mountedRef.current) setSaved(false);
+      }, 2000);
+    }
   };
 
   const fields: { key: string; label: string; placeholder?: string; full?: boolean }[] = [
