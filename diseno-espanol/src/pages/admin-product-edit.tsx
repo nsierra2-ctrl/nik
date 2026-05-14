@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useRoute, Link } from "wouter";
 import {
   useAdminListProducts,
@@ -11,7 +11,6 @@ import {
 } from "@workspace/api-client-react";
 import type { Product, PriceTier, ProductVariant } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ObjectUploader } from "@workspace/object-storage-web";
 import Header from "@/components/Header";
 import ProductImage from "@/components/ProductImage";
 import { useAdminSession } from "@/lib/auth";
@@ -120,6 +119,7 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "precios" | "variantes">("info");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     setDraft(productToDraft(product));
@@ -129,12 +129,11 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
     setDraft((d) => ({ ...d, [key]: value }));
   };
 
-  // FIX: useCallback para que invalidate no sea nueva referencia en cada render
-  const invalidate = useCallback(() => {
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: getAdminListProductsQueryKey() });
     qc.invalidateQueries({ queryKey: getListProductsQueryKey() });
     qc.invalidateQueries({ queryKey: getGetProductQueryKey(product.id) });
-  }, [qc, product.id]);
+  };
 
   const handleSave = async () => {
     setError(null);
@@ -169,12 +168,9 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
     }
   };
 
-  // FIX: useCallback para que persistImage no sea nueva referencia en cada render.
-  // Esto evita que ObjectUploader (Uppy) detecte un prop nuevo y se desmonte/remonte
-  // en bucle cada vez que update.isPending cambia.
-  const persistImage = useCallback(async (newPath: string) => {
+  const persistImage = async (newPath: string) => {
     try {
-      setDraft((d) => ({ ...d, imagePath: newPath }));
+      setField("imagePath", newPath);
       await update.mutateAsync({
         id: product.id,
         data: { imagePath: newPath },
@@ -186,36 +182,41 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
       const msg = e instanceof Error ? e.message : "Error al guardar imagen";
       setError(msg);
     }
-  }, [product.id, update, invalidate]);
+  };
 
-  // FIX: useCallback para que handleImageUpload sea referencia estable
-  const handleImageUpload = useCallback(async (uploadedUrl: string) => {
+  const handleImageUpload = async (uploadedUrl: string) => {
     const u = new URL(uploadedUrl);
     const objectPath = u.pathname.split("/").slice(-1)[0];
     const newPath = `/objects/uploads/${objectPath}`;
     await persistImage(newPath);
-  }, [persistImage]);
+  };
 
-  // FIX: useCallback para los dos callbacks que se pasan a ObjectUploader.
-  // Si son funciones inline (nuevas en cada render), Uppy las trata como
-  // props distintas → desmonta y remonta el plugin → bucle de crash.
-  const handleGetUploadParameters = useCallback(async (file: File) => {
-    const res = await requestUpload.mutateAsync({
-      data: {
-        name: String(file.name ?? "image"),
-        size: Number(file.size ?? 0),
-        contentType: String(file.type ?? "application/octet-stream"),
-      },
-    });
-    return { method: "PUT" as const, url: res.uploadURL };
-  }, [requestUpload]);
-
-  const handleUploadComplete = useCallback((result: { successful?: Array<{ uploadURL?: string }> }) => {
-    const successful = result.successful?.[0];
-    if (successful?.uploadURL) {
-      void handleImageUpload(successful.uploadURL);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await requestUpload.mutateAsync({
+        data: {
+          name: file.name,
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+        },
+      });
+      await fetch(res.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      await handleImageUpload(res.uploadURL);
+    } catch (err) {
+      setError("Error al subir imagen");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
     }
-  }, [handleImageUpload]);
+  };
 
   const addTier = () => {
     setField("tiers", [
@@ -284,7 +285,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
     <div className="min-h-screen">
       <Header adminLink={false} />
 
-      {/* Sticky top bar */}
       <div
         className="sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap"
         style={{
@@ -318,7 +318,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
             <span
               className="font-mono text-[0.65rem] uppercase tracking-widest flex items-center gap-1.5"
               style={{ color: "var(--color-neon)" }}
-              data-testid="text-saved"
             >
               <span style={{
                 width: 6, height: 6, borderRadius: "50%",
@@ -334,7 +333,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
             className="btn-neon"
             onClick={handleSave}
             disabled={update.isPending}
-            data-testid="button-save-product"
             style={{ padding: "0.6rem 1.4rem" }}
           >
             {update.isPending ? "Guardando…" : "Guardar cambios"}
@@ -347,7 +345,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
           <div
             className="mb-5 p-4 rounded-xl font-mono text-xs flex items-start gap-3"
             style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)", color: "#fca5a5" }}
-            data-testid="text-product-error"
           >
             <span style={{ flexShrink: 0 }}>⚠</span>
             {error}
@@ -355,10 +352,8 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
         )}
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          {/* LEFT: IMAGE PANEL */}
           <div className="flex flex-col gap-4">
             <div className="card-vape p-4 flex flex-col gap-4">
-              {/* Preview */}
               <div
                 className="aspect-square rounded-xl overflow-hidden relative"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
@@ -367,7 +362,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                   imagePath={draft.imagePath}
                   alt={draft.name}
                   className="h-full"
-                  testId="img-edit-preview"
                   cacheBust={savedAt ?? product.updatedAt ?? null}
                 />
                 {draft.imagePath && (
@@ -384,23 +378,22 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                 )}
               </div>
 
-              {/* Upload button — FIX: callbacks memoizados, no inline */}
-              <ObjectUploader
-                maxNumberOfFiles={1}
-                maxFileSize={20 * 1024 * 1024}
-                onGetUploadParameters={handleGetUploadParameters}
-                onComplete={handleUploadComplete}
-                buttonClassName="btn-neon"
-              >
-                {draft.imagePath ? "↑ Cambiar imagen" : "↑ Subir imagen"}
-              </ObjectUploader>
+              <label className="btn-neon cursor-pointer text-center" style={{ display: "block" }}>
+                {uploading ? "Subiendo…" : draft.imagePath ? "↑ Cambiar imagen" : "↑ Subir imagen"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={handleFileChange}
+                />
+              </label>
 
               {draft.imagePath && (
                 <button
                   type="button"
                   className="btn-ghost danger"
                   onClick={() => persistImage("")}
-                  data-testid="button-remove-image"
                   style={{ padding: "0.5rem 1rem" }}
                 >
                   Quitar imagen
@@ -411,11 +404,10 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                 products={allProducts}
                 currentId={product.id}
                 currentPath={draft.imagePath}
-                onPick={persistImage}
+                onPick={(path) => void persistImage(path)}
               />
             </div>
 
-            {/* Quick meta card */}
             <div className="card-vape p-4">
               <div className="font-mono text-[0.6rem] uppercase tracking-widest mb-3" style={{ color: "var(--color-ice)" }}>
                 Configuración rápida
@@ -427,7 +419,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                     type="number"
                     value={draft.sortOrder}
                     onChange={(e) => setField("sortOrder", e.target.value)}
-                    data-testid="input-sort"
                   />
                 </Field>
                 <Field label="Estado">
@@ -435,7 +426,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                     className="input-vape"
                     value={draft.active ? "yes" : "no"}
                     onChange={(e) => setField("active", e.target.value === "yes")}
-                    data-testid="select-active"
                   >
                     <option value="yes">✓ Activo</option>
                     <option value="no">✕ Oculto</option>
@@ -445,9 +435,7 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
             </div>
           </div>
 
-          {/* RIGHT: TABS + FORM */}
           <div className="flex flex-col gap-0">
-            {/* Tab nav */}
             <div
               className="flex gap-1 p-1 rounded-xl mb-5"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
@@ -473,7 +461,6 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
               ))}
             </div>
 
-            {/* TAB: Info básica */}
             {activeTab === "info" && (
               <div className="card-vape p-5">
                 <h2 className="font-display text-xl mb-5" style={{ color: "white", letterSpacing: "0.06em" }}>
@@ -481,281 +468,117 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Nombre" full>
-                    <input
-                      className="input-vape"
-                      value={draft.name}
-                      onChange={(e) => setField("name", e.target.value)}
-                      data-testid="input-name"
-                    />
+                    <input className="input-vape" value={draft.name} onChange={(e) => setField("name", e.target.value)} />
                   </Field>
                   <Field label="Slug (URL)">
-                    <input
-                      className="input-vape"
-                      value={draft.slug}
-                      onChange={(e) => setField("slug", e.target.value)}
-                      data-testid="input-slug"
-                    />
+                    <input className="input-vape" value={draft.slug} onChange={(e) => setField("slug", e.target.value)} />
                   </Field>
                   <Field label="Categoría">
-                    <select
-                      className="input-vape"
-                      value={draft.category}
-                      onChange={(e) => setField("category", e.target.value)}
-                      data-testid="select-category"
-                    >
+                    <select className="input-vape" value={draft.category} onChange={(e) => setField("category", e.target.value)}>
                       {(categories ?? []).map((c) => (
-                        <option key={c.slug} value={c.slug}>
-                          {c.name}
-                        </option>
+                        <option key={c.slug} value={c.slug}>{c.name}</option>
                       ))}
                     </select>
                   </Field>
                   <Field label="Badge (etiqueta)">
-                    <input
-                      className="input-vape"
-                      value={draft.badge}
-                      placeholder="PREMIUM, BEST SELLER…"
-                      onChange={(e) => setField("badge", e.target.value)}
-                      data-testid="input-badge"
-                    />
+                    <input className="input-vape" value={draft.badge} placeholder="PREMIUM, BEST SELLER…" onChange={(e) => setField("badge", e.target.value)} />
                   </Field>
                   <Field label="THC %">
-                    <input
-                      className="input-vape"
-                      value={draft.thcPercent}
-                      placeholder="96.487%"
-                      onChange={(e) => setField("thcPercent", e.target.value)}
-                      data-testid="input-thc"
-                    />
+                    <input className="input-vape" value={draft.thcPercent} placeholder="96.487%" onChange={(e) => setField("thcPercent", e.target.value)} />
                   </Field>
                   <Field label="Descripción corta" full>
-                    <input
-                      className="input-vape"
-                      value={draft.shortDescription}
-                      onChange={(e) => setField("shortDescription", e.target.value)}
-                      data-testid="input-short"
-                    />
+                    <input className="input-vape" value={draft.shortDescription} onChange={(e) => setField("shortDescription", e.target.value)} />
                   </Field>
                   <Field label="Descripción larga" full>
-                    <textarea
-                      className="input-vape"
-                      rows={4}
-                      value={draft.description}
-                      onChange={(e) => setField("description", e.target.value)}
-                      data-testid="input-description"
-                    />
+                    <textarea className="input-vape" rows={4} value={draft.description} onChange={(e) => setField("description", e.target.value)} />
                   </Field>
                   <Field label="Notas (asterisco)" full>
-                    <input
-                      className="input-vape"
-                      value={draft.notes}
-                      onChange={(e) => setField("notes", e.target.value)}
-                      data-testid="input-notes"
-                    />
+                    <input className="input-vape" value={draft.notes} onChange={(e) => setField("notes", e.target.value)} />
                   </Field>
                 </div>
 
-                {/* Precio detal inline */}
-                <div
-                  className="mt-6 pt-5"
-                  style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
-                >
+                <div className="mt-6 pt-5" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
                   <h3 className="font-display text-lg mb-4" style={{ color: "var(--color-neon)", letterSpacing: "0.08em" }}>
                     Precio al detal
                   </h3>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="Precio (COP)">
-                      <input
-                        className="input-vape"
-                        inputMode="numeric"
-                        value={draft.retailPrice}
-                        placeholder="60000"
-                        onChange={(e) => setField("retailPrice", e.target.value)}
-                        data-testid="input-retail-price"
-                      />
+                      <input className="input-vape" inputMode="numeric" value={draft.retailPrice} placeholder="60000" onChange={(e) => setField("retailPrice", e.target.value)} />
                     </Field>
                     <Field label="Etiqueta">
-                      <input
-                        className="input-vape"
-                        value={draft.retailLabel}
-                        placeholder="1 unidad"
-                        onChange={(e) => setField("retailLabel", e.target.value)}
-                        data-testid="input-retail-label"
-                      />
+                      <input className="input-vape" value={draft.retailLabel} placeholder="1 unidad" onChange={(e) => setField("retailLabel", e.target.value)} />
                     </Field>
                     <Field label="Unidad">
-                      <input
-                        className="input-vape"
-                        value={draft.unit}
-                        placeholder="unidad / ml / paquete"
-                        onChange={(e) => setField("unit", e.target.value)}
-                        data-testid="input-unit"
-                      />
+                      <input className="input-vape" value={draft.unit} placeholder="unidad / ml / paquete" onChange={(e) => setField("unit", e.target.value)} />
                     </Field>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB: Precios / Escalas */}
             {activeTab === "precios" && (
               <div className="card-vape p-5">
                 <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
                   <div>
-                    <h2 className="font-display text-xl" style={{ color: "white", letterSpacing: "0.06em" }}>
-                      Escalas mayoristas
-                    </h2>
-                    <p className="font-mono text-xs mt-1 uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
-                      Cantidad · precio unitario · total automático
-                    </p>
+                    <h2 className="font-display text-xl" style={{ color: "white", letterSpacing: "0.06em" }}>Escalas mayoristas</h2>
+                    <p className="font-mono text-xs mt-1 uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>Cantidad · precio unitario · total automático</p>
                   </div>
-                  <button type="button" className="btn-neon" onClick={addTier} data-testid="button-add-tier">
-                    + Escala
-                  </button>
+                  <button type="button" className="btn-neon" onClick={addTier}>+ Escala</button>
                 </div>
 
                 {draft.tiers.length === 0 ? (
-                  <div
-                    className="py-12 text-center rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}
-                  >
-                    <div className="font-display text-2xl mb-2" style={{ color: "var(--color-muted)", letterSpacing: "0.1em" }}>
-                      SIN ESCALAS
-                    </div>
-                    <p className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
-                      Añade escalas de precio mayorista para este producto
-                    </p>
-                    <button type="button" className="btn-neon mt-4" onClick={addTier}>
-                      + Agregar primera escala
-                    </button>
+                  <div className="py-12 text-center rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                    <div className="font-display text-2xl mb-2" style={{ color: "var(--color-muted)", letterSpacing: "0.1em" }}>SIN ESCALAS</div>
+                    <button type="button" className="btn-neon mt-4" onClick={addTier}>+ Agregar primera escala</button>
                   </div>
                 ) : (
                   <>
-                    <div
-                      className="hidden sm:grid gap-2 mb-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] px-1"
-                      style={{ gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr auto", color: "var(--color-muted-2)" }}
-                    >
-                      <span>Etiqueta</span>
-                      <span>Cantidad</span>
-                      <span>Precio/u</span>
-                      <span>Total</span>
-                      <span />
+                    <div className="hidden sm:grid gap-2 mb-2 font-mono text-[0.6rem] uppercase tracking-[0.18em] px-1" style={{ gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr auto", color: "var(--color-muted-2)" }}>
+                      <span>Etiqueta</span><span>Cantidad</span><span>Precio/u</span><span>Total</span><span />
                     </div>
-                    <TierRows
-                      tiers={draft.tiers}
-                      onChange={updateTier}
-                      onRemove={removeTier}
-                      testIdPrefix="root"
-                    />
+                    <TierRows tiers={draft.tiers} onChange={updateTier} onRemove={removeTier} testIdPrefix="root" />
                   </>
                 )}
               </div>
             )}
 
-            {/* TAB: Variantes */}
             {activeTab === "variantes" && (
               <div className="card-vape p-5">
                 <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
                   <div>
-                    <h2 className="font-display text-xl" style={{ color: "white", letterSpacing: "0.06em" }}>
-                      Variantes
-                    </h2>
-                    <p className="font-mono text-xs mt-1 uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
-                      Para sub-opciones: Nacional, Delta 9, Clear…
-                    </p>
+                    <h2 className="font-display text-xl" style={{ color: "white", letterSpacing: "0.06em" }}>Variantes</h2>
+                    <p className="font-mono text-xs mt-1 uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>Para sub-opciones: Nacional, Delta 9, Clear…</p>
                   </div>
-                  <button type="button" className="btn-neon" onClick={addVariant} data-testid="button-add-variant">
-                    + Variante
-                  </button>
+                  <button type="button" className="btn-neon" onClick={addVariant}>+ Variante</button>
                 </div>
 
                 {draft.variants.length === 0 ? (
-                  <div
-                    className="py-12 text-center rounded-xl"
-                    style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}
-                  >
-                    <div className="font-display text-2xl mb-2" style={{ color: "var(--color-muted)", letterSpacing: "0.1em" }}>
-                      SIN VARIANTES
-                    </div>
-                    <p className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
-                      Usa las escalas si el producto es único. Agrega variantes si tiene sub-opciones.
-                    </p>
-                    <button type="button" className="btn-neon mt-4" onClick={addVariant}>
-                      + Agregar variante
-                    </button>
+                  <div className="py-12 text-center rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                    <div className="font-display text-2xl mb-2" style={{ color: "var(--color-muted)", letterSpacing: "0.1em" }}>SIN VARIANTES</div>
+                    <button type="button" className="btn-neon mt-4" onClick={addVariant}>+ Agregar variante</button>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-4">
                     {draft.variants.map((v, vIdx) => (
-                      <div
-                        key={vIdx}
-                        className="p-4 rounded-xl"
-                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
-                        data-testid={`variant-${vIdx}`}
-                      >
+                      <div key={vIdx} className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
                         <div className="grid gap-3 sm:grid-cols-[1fr_140px_1fr_auto] mb-4 items-end">
                           <Field label="Nombre variante">
-                            <input
-                              className="input-vape"
-                              value={v.name}
-                              onChange={(e) => updateVariant(vIdx, { name: e.target.value })}
-                              data-testid={`input-variant-name-${vIdx}`}
-                            />
+                            <input className="input-vape" value={v.name} onChange={(e) => updateVariant(vIdx, { name: e.target.value })} />
                           </Field>
                           <Field label="Precio detal">
-                            <input
-                              className="input-vape"
-                              inputMode="numeric"
-                              value={v.retailPrice ?? ""}
-                              onChange={(e) =>
-                                updateVariant(vIdx, { retailPrice: parseNumberInput(e.target.value) })
-                              }
-                              data-testid={`input-variant-retail-${vIdx}`}
-                            />
+                            <input className="input-vape" inputMode="numeric" value={v.retailPrice ?? ""} onChange={(e) => updateVariant(vIdx, { retailPrice: parseNumberInput(e.target.value) })} />
                           </Field>
                           <Field label="Etiqueta">
-                            <input
-                              className="input-vape"
-                              value={v.retailLabel ?? ""}
-                              onChange={(e) => updateVariant(vIdx, { retailLabel: e.target.value })}
-                              data-testid={`input-variant-label-${vIdx}`}
-                            />
+                            <input className="input-vape" value={v.retailLabel ?? ""} onChange={(e) => updateVariant(vIdx, { retailLabel: e.target.value })} />
                           </Field>
-                          <button
-                            type="button"
-                            className="btn-ghost danger"
-                            onClick={() => removeVariant(vIdx)}
-                            data-testid={`button-remove-variant-${vIdx}`}
-                            style={{ padding: "0.7rem" }}
-                          >
-                            ✕
-                          </button>
+                          <button type="button" className="btn-ghost danger" onClick={() => removeVariant(vIdx)} style={{ padding: "0.7rem" }}>✕</button>
                         </div>
-
-                        <div
-                          className="pt-3 mt-1"
-                          style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
-                        >
+                        <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                           <div className="flex items-center justify-between mb-3">
-                            <div className="font-mono text-[0.6rem] uppercase tracking-widest" style={{ color: "var(--color-ice)" }}>
-                              Escalas · {v.tiers.length}
-                            </div>
-                            <button
-                              type="button"
-                              className="btn-ghost"
-                              onClick={() => addVariantTier(vIdx)}
-                              data-testid={`button-add-variant-tier-${vIdx}`}
-                              style={{ padding: "0.4rem 0.8rem", fontSize: "0.65rem" }}
-                            >
-                              + Escala
-                            </button>
+                            <div className="font-mono text-[0.6rem] uppercase tracking-widest" style={{ color: "var(--color-ice)" }}>Escalas · {v.tiers.length}</div>
+                            <button type="button" className="btn-ghost" onClick={() => addVariantTier(vIdx)} style={{ padding: "0.4rem 0.8rem", fontSize: "0.65rem" }}>+ Escala</button>
                           </div>
-                          <TierRows
-                            tiers={v.tiers}
-                            onChange={(tIdx, patch) => updateVariantTier(vIdx, tIdx, patch)}
-                            onRemove={(tIdx) => removeVariantTier(vIdx, tIdx)}
-                            testIdPrefix={`v${vIdx}`}
-                          />
+                          <TierRows tiers={v.tiers} onChange={(tIdx, patch) => updateVariantTier(vIdx, tIdx, patch)} onRemove={(tIdx) => removeVariantTier(vIdx, tIdx)} testIdPrefix={`v${vIdx}`} />
                         </div>
                       </div>
                     ))}
@@ -770,194 +593,54 @@ function ProductEditor({ product, allProducts }: { product: Product; allProducts
   );
 }
 
-function Field({
-  label,
-  children,
-  full,
-}: {
-  label: string;
-  children: React.ReactNode;
-  full?: boolean;
-}) {
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <label className={`flex flex-col gap-1.5 ${full ? "sm:col-span-2" : ""}`}>
-      <span className="font-mono text-[0.62rem] uppercase tracking-[0.18em]" style={{ color: "var(--color-fog)" }}>
-        {label}
-      </span>
+      <span className="font-mono text-[0.62rem] uppercase tracking-[0.18em]" style={{ color: "var(--color-fog)" }}>{label}</span>
       {children}
     </label>
   );
 }
 
-function TierRows({
-  tiers,
-  onChange,
-  onRemove,
-  testIdPrefix,
-}: {
-  tiers: PriceTier[];
-  onChange: (idx: number, patch: Partial<PriceTier>) => void;
-  onRemove: (idx: number) => void;
-  testIdPrefix: string;
-}) {
+function TierRows({ tiers, onChange, onRemove, testIdPrefix }: { tiers: PriceTier[]; onChange: (idx: number, patch: Partial<PriceTier>) => void; onRemove: (idx: number) => void; testIdPrefix: string }) {
   if (tiers.length === 0) {
-    return (
-      <div className="font-mono text-xs uppercase tracking-widest text-center py-4" style={{ color: "var(--color-muted-2)" }}>
-        Sin escalas.
-      </div>
-    );
+    return <div className="font-mono text-xs uppercase tracking-widest text-center py-4" style={{ color: "var(--color-muted-2)" }}>Sin escalas.</div>;
   }
   return (
     <div className="flex flex-col gap-2">
       {tiers.map((t, i) => (
-        <div
-          key={i}
-          className="grid gap-2 items-center p-2 rounded-lg"
-          style={{
-            gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr auto",
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid rgba(255,255,255,0.05)",
-          }}
-          data-testid={`tier-row-${testIdPrefix}-${i}`}
-        >
-          <input
-            className="input-vape"
-            placeholder="Etiqueta (ej. 50 unidades)"
-            value={t.label}
-            onChange={(e) => onChange(i, { label: e.target.value })}
-            data-testid={`input-tier-label-${testIdPrefix}-${i}`}
-            style={{ padding: "0.55rem 0.75rem" }}
-          />
-          <input
-            className="input-vape"
-            type="number"
-            placeholder="Cant."
-            value={t.quantity}
-            onChange={(e) => onChange(i, { quantity: Number(e.target.value) || 0 })}
-            data-testid={`input-tier-qty-${testIdPrefix}-${i}`}
-            style={{ padding: "0.55rem 0.75rem" }}
-          />
-          <input
-            className="input-vape"
-            inputMode="numeric"
-            placeholder="Precio unitario"
-            value={t.unitPrice}
-            onChange={(e) => onChange(i, { unitPrice: parseNumberInput(e.target.value) ?? 0 })}
-            data-testid={`input-tier-price-${testIdPrefix}-${i}`}
-            style={{ padding: "0.55rem 0.75rem" }}
-          />
-          <div
-            className="px-3 py-2 rounded-lg font-mono text-sm text-right tabular-nums"
-            style={{
-              background: "rgba(200,255,0,0.06)",
-              border: "1px solid rgba(200,255,0,0.2)",
-              color: "var(--color-neon)",
-              fontSize: "0.8rem",
-            }}
-            data-testid={`text-tier-total-${testIdPrefix}-${i}`}
-          >
-            {formatCop(t.quantity * t.unitPrice)}
-          </div>
-          <button
-            type="button"
-            className="btn-ghost danger"
-            onClick={() => onRemove(i)}
-            data-testid={`button-remove-tier-${testIdPrefix}-${i}`}
-            style={{ padding: "0.55rem 0.75rem" }}
-          >
-            ✕
-          </button>
+        <div key={i} className="grid gap-2 items-center p-2 rounded-lg" style={{ gridTemplateColumns: "1.4fr 0.7fr 1fr 1fr auto", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <input className="input-vape" placeholder="Etiqueta" value={t.label} onChange={(e) => onChange(i, { label: e.target.value })} style={{ padding: "0.55rem 0.75rem" }} />
+          <input className="input-vape" type="number" placeholder="Cant." value={t.quantity} onChange={(e) => onChange(i, { quantity: Number(e.target.value) || 0 })} style={{ padding: "0.55rem 0.75rem" }} />
+          <input className="input-vape" inputMode="numeric" placeholder="Precio unitario" value={t.unitPrice} onChange={(e) => onChange(i, { unitPrice: parseNumberInput(e.target.value) ?? 0 })} style={{ padding: "0.55rem 0.75rem" }} />
+          <div className="px-3 py-2 rounded-lg font-mono text-sm text-right tabular-nums" style={{ background: "rgba(200,255,0,0.06)", border: "1px solid rgba(200,255,0,0.2)", color: "var(--color-neon)", fontSize: "0.8rem" }}>{formatCop(t.quantity * t.unitPrice)}</div>
+          <button type="button" className="btn-ghost danger" onClick={() => onRemove(i)} style={{ padding: "0.55rem 0.75rem" }}>✕</button>
         </div>
       ))}
     </div>
   );
 }
 
-function ImageGalleryPicker({
-  products,
-  currentId,
-  currentPath,
-  onPick,
-}: {
-  products: Product[];
-  currentId: string;
-  currentPath: string;
-  onPick: (path: string) => void;
-}) {
+function ImageGalleryPicker({ products, currentId, currentPath, onPick }: { products: Product[]; currentId: string; currentPath: string; onPick: (path: string) => void }) {
   const [open, setOpen] = useState(false);
-
-  const gallery = products
-    .filter((p) => p.id !== currentId && p.imagePath && p.imagePath.length > 0)
-    .map((p) => ({
-      id: p.id,
-      path: p.imagePath as string,
-      name: p.name,
-      updatedAt: p.updatedAt ?? null,
-    }))
-    .filter((g, idx, arr) => arr.findIndex((x) => x.path === g.path) === idx);
-
+  const gallery = products.filter((p) => p.id !== currentId && p.imagePath && p.imagePath.length > 0).map((p) => ({ id: p.id, path: p.imagePath as string, name: p.name, updatedAt: p.updatedAt ?? null })).filter((g, idx, arr) => arr.findIndex((x) => x.path === g.path) === idx);
   if (gallery.length === 0) return null;
-
   return (
     <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        className="btn-ghost"
-        onClick={() => setOpen((v) => !v)}
-        data-testid="button-toggle-gallery"
-        style={{ fontSize: "0.65rem" }}
-      >
+      <button type="button" className="btn-ghost" onClick={() => setOpen((v) => !v)} style={{ fontSize: "0.65rem" }}>
         {open ? "▲ Ocultar galería" : `▼ Galería de imágenes (${gallery.length})`}
       </button>
       {open && (
-        <div
-          className="p-3 rounded-xl"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          <div
-            className="font-mono text-[0.58rem] uppercase tracking-widest mb-2 px-1"
-            style={{ color: "var(--color-muted-2)" }}
-          >
-            Reutilizar imagen de otro producto
-          </div>
+        <div className="p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="font-mono text-[0.58rem] uppercase tracking-widest mb-2 px-1" style={{ color: "var(--color-muted-2)" }}>Reutilizar imagen de otro producto</div>
           <div className="grid grid-cols-4 gap-2 max-h-[260px] overflow-y-auto pr-1">
             {gallery.map((g) => {
               const isActive = g.path === currentPath;
               return (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => onPick(g.path)}
-                  className="relative aspect-square rounded-lg overflow-hidden group"
-                  style={{
-                    border: isActive
-                      ? "2px solid var(--color-neon)"
-                      : "1px solid rgba(255,255,255,0.1)",
-                    boxShadow: isActive ? "0 0 12px rgba(200,255,0,0.3)" : "none",
-                    transition: "all 0.2s",
-                  }}
-                  title={g.name}
-                  data-testid={`gallery-pick-${g.id}`}
-                >
-                  <ProductImage
-                    imagePath={g.path}
-                    alt={g.name}
-                    className="h-full"
-                    cacheBust={g.updatedAt}
-                  />
-                  <div
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-1"
-                    style={{ background: "linear-gradient(180deg, transparent 40%, rgba(6,6,12,0.9) 100%)" }}
-                  >
-                    <span className="font-mono text-[0.5rem] uppercase tracking-widest text-white truncate w-full text-center">
-                      {g.name}
-                    </span>
-                  </div>
+                <button key={g.id} type="button" onClick={() => onPick(g.path)} className="relative aspect-square rounded-lg overflow-hidden group" style={{ border: isActive ? "2px solid var(--color-neon)" : "1px solid rgba(255,255,255,0.1)", boxShadow: isActive ? "0 0 12px rgba(200,255,0,0.3)" : "none", transition: "all 0.2s" }} title={g.name}>
+                  <ProductImage imagePath={g.path} alt={g.name} className="h-full" cacheBust={g.updatedAt} />
                   {isActive && (
-                    <div
-                      className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                      style={{ background: "var(--color-neon)" }}
-                    >
+                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--color-neon)" }}>
                       <span style={{ color: "var(--color-ink)", fontSize: "0.55rem", fontWeight: 700 }}>✓</span>
                     </div>
                   )}
@@ -970,4 +653,3 @@ function ImageGalleryPicker({
     </div>
   );
 }
-  
