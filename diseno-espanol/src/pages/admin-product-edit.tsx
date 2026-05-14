@@ -61,6 +61,18 @@ function productToDraft(p: Product): Draft {
   };
 }
 
+const Spinner = () => (
+  <div className="min-h-screen flex items-center justify-center font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
+    <div className="flex flex-col items-center gap-3">
+      <div
+        className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
+        style={{ borderTopColor: "var(--color-neon)", borderRightColor: "var(--color-ice)" }}
+      />
+      Cargando…
+    </div>
+  </div>
+);
+
 export default function AdminProductEdit() {
   const [, params] = useRoute<{ id: string }>("/admin/products/:id");
   const [, setLocation] = useLocation();
@@ -73,31 +85,27 @@ export default function AdminProductEdit() {
   }, [me, meLoading, setLocation]);
 
   const productId = params?.id;
-  const { data: products, isLoading } = useAdminListProducts();
-  const product = products?.find((p) => p.id === productId);
+  const { data: products, isLoading: productsLoading } = useAdminListProducts();
 
-  if (meLoading || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-2)" }}>
-        <div className="flex flex-col items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
-            style={{ borderTopColor: "var(--color-neon)", borderRightColor: "var(--color-ice)" }}
-          />
-          Cargando…
-        </div>
-      </div>
-    );
+  // FIX: show spinner while auth OR products are loading, OR products haven't arrived yet
+  if (meLoading || productsLoading || products === undefined) {
+    return <Spinner />;
   }
 
   if (!me?.authenticated) return null;
 
+  const product = products.find((p) => p.id === productId);
+
+  // Only show "not found" once we're sure products loaded and ID isn't there
   if (!product) {
     return (
       <div className="min-h-screen">
         <Header adminLink={false} />
         <div className="max-w-3xl mx-auto px-4 py-16 text-center">
           <h1 className="font-display text-3xl mb-4 text-gradient">Producto no encontrado</h1>
+          <p className="font-mono text-xs uppercase tracking-widest mb-6" style={{ color: "var(--color-muted-2)" }}>
+            ID: {productId}
+          </p>
           <Link href="/admin">
             <button type="button" className="btn-neon">Volver al panel</button>
           </Link>
@@ -106,7 +114,7 @@ export default function AdminProductEdit() {
     );
   }
 
-  return <ProductEditor product={product} allProducts={products ?? []} />;
+  return <ProductEditor product={product} allProducts={products} />;
 }
 
 function ProductEditor({ product, allProducts }: { product: Product; allProducts: Product[] }) {
@@ -623,7 +631,10 @@ function TierRows({ tiers, onChange, onRemove, testIdPrefix }: { tiers: PriceTie
 
 function ImageGalleryPicker({ products, currentId, currentPath, onPick }: { products: Product[]; currentId: string; currentPath: string; onPick: (path: string) => void }) {
   const [open, setOpen] = useState(false);
-  const gallery = products.filter((p) => p.id !== currentId && p.imagePath && p.imagePath.length > 0).map((p) => ({ id: p.id, path: p.imagePath as string, name: p.name, updatedAt: p.updatedAt ?? null })).filter((g, idx, arr) => arr.findIndex((x) => x.path === g.path) === idx);
+  const gallery = products
+    .filter((p) => p.id !== currentId && p.imagePath && p.imagePath.length > 0)
+    .map((p) => ({ id: p.id, path: p.imagePath as string, name: p.name, updatedAt: p.updatedAt ?? null }))
+    .filter((g, idx, arr) => arr.findIndex((x) => x.path === g.path) === idx);
   if (gallery.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -637,7 +648,18 @@ function ImageGalleryPicker({ products, currentId, currentPath, onPick }: { prod
             {gallery.map((g) => {
               const isActive = g.path === currentPath;
               return (
-                <button key={g.id} type="button" onClick={() => onPick(g.path)} className="relative aspect-square rounded-lg overflow-hidden group" style={{ border: isActive ? "2px solid var(--color-neon)" : "1px solid rgba(255,255,255,0.1)", boxShadow: isActive ? "0 0 12px rgba(200,255,0,0.3)" : "none", transition: "all 0.2s" }} title={g.name}>
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => onPick(g.path)}
+                  className="relative aspect-square rounded-lg overflow-hidden group"
+                  style={{
+                    border: isActive ? "2px solid var(--color-neon)" : "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: isActive ? "0 0 12px rgba(200,255,0,0.3)" : "none",
+                    transition: "all 0.2s",
+                  }}
+                  title={g.name}
+                >
                   <ProductImage imagePath={g.path} alt={g.name} className="h-full" cacheBust={g.updatedAt} />
                   {isActive && (
                     <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--color-neon)" }}>
