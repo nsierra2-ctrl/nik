@@ -1,7 +1,8 @@
 {
+  "buildCommand": "cd api-client-react && npm install && cd ../diseno-espanol && npm install && npm run build",
+  "outputDirectory": "diseno-espanol/dist",
+  "installCommand": "echo skip",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "buildCommand": "npm install && npm run build",
-  "installCommand": "echo skip"
+  ]
 }
