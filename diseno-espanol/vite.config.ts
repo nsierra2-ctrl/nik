@@ -19,6 +19,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
+    rollupOptions: {
+      external: ["@tanstack/react-query"],
+    },
   },
   server: {
     fs: {
