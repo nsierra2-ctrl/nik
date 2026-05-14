@@ -12,18 +12,13 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@workspace/api-client-react": path.resolve(import.meta.dirname, "../api-client-react/src"),
-      "@workspace/object-storage-web": path.resolve(import.meta.dirname, "../object-storage-web/src"),
     },
-    dedupe: ["react", "react-dom", "@uppy/core", "@tanstack/react-query"],
+    dedupe: ["react", "react-dom"],
   },
   root: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
-    rollupOptions: {
-      external: [],
-      plugins: [],
-    },
   },
   server: {
     fs: {
