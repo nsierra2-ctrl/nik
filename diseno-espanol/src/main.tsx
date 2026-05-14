@@ -6,3 +6,4 @@ import { setBaseUrl } from "@workspace/api-client-react";
 setBaseUrl(import.meta.env.VITE_API_URL || "https://api.vapingstreet.com");
 
 createRoot(document.getElementById("root")!).render(<App />);
+// build trigger
